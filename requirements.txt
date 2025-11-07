@@ -1,0 +1,4 @@
+dbfread>=2.0.7
+reportlab==3.5.68
+num2words>=0.5.12
+rich>=10.0.0
