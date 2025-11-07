@@ -5,6 +5,8 @@
 import sys
 import os
 import logging
+import argparse
+import subprocess
 from datetime import date
 from rich.console import Console
 from rich.panel import Panel
@@ -33,6 +35,114 @@ if sys.platform == 'win32':
 # Инициализация
 console = Console(force_terminal=True, legacy_windows=False)
 logger = logging.getLogger(__name__)
+
+
+def check_for_updates():
+    """
+    Проверить и применить обновления из git-репозитория
+
+    Returns:
+        bool: True если обновления были применены, False если обновлений нет или ошибка
+    """
+    try:
+        console.print("\n[cyan]Проверка обновлений...[/cyan]")
+
+        # Проверяем, является ли текущая директория git-репозиторием
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        git_dir = os.path.join(script_dir, '.git')
+
+        if not os.path.exists(git_dir):
+            console.print("[yellow]⚠ Это не git-репозиторий. Обновление невозможно.[/yellow]")
+            return False
+
+        # Получаем текущую ветку и хеш коммита
+        result = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'],
+            cwd=script_dir,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+
+        if result.returncode != 0:
+            console.print(f"[red]✗ Ошибка при получении текущей версии[/red]")
+            return False
+
+        current_hash = result.stdout.strip()
+
+        # Получаем обновления с удаленного репозитория
+        console.print("[cyan]Загрузка обновлений...[/cyan]")
+        result = subprocess.run(
+            ['git', 'fetch'],
+            cwd=script_dir,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+
+        if result.returncode != 0:
+            console.print(f"[red]✗ Ошибка при загрузке обновлений:[/red] {result.stderr}")
+            return False
+
+        # Проверяем, есть ли новые коммиты
+        result = subprocess.run(
+            ['git', 'rev-parse', '@{u}'],
+            cwd=script_dir,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+
+        if result.returncode != 0:
+            console.print("[yellow]⚠ Не удалось определить удаленную ветку[/yellow]")
+            return False
+
+        remote_hash = result.stdout.strip()
+
+        # Сравниваем хеши
+        if current_hash == remote_hash:
+            console.print("[green]✓ Обновлений нет. Используется последняя версия.[/green]")
+            return False
+
+        # Применяем обновления
+        console.print("[cyan]Применение обновлений...[/cyan]")
+        result = subprocess.run(
+            ['git', 'pull'],
+            cwd=script_dir,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+
+        if result.returncode != 0:
+            console.print(f"[red]✗ Ошибка при применении обновлений:[/red] {result.stderr}")
+            return False
+
+        # Показываем информацию об обновлениях
+        result = subprocess.run(
+            ['git', 'log', '--oneline', f'{current_hash}..HEAD'],
+            cwd=script_dir,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+
+        if result.stdout.strip():
+            console.print("\n[green]✓ Обновления успешно применены:[/green]")
+            for line in result.stdout.strip().split('\n'):
+                console.print(f"  [dim]{line}[/dim]")
+        else:
+            console.print("[green]✓ Обновления применены[/green]")
+
+        return True
+
+    except FileNotFoundError:
+        console.print("[red]✗ Git не установлен или не найден в PATH[/red]")
+        return False
+    except Exception as e:
+        console.print(f"[red]✗ Ошибка при обновлении:[/red] {str(e)}")
+        logger.error(f"Ошибка при обновлении: {str(e)}")
+        return False
 
 
 def print_header():
@@ -199,6 +309,26 @@ def main():
     """
     # Настройка логирования
     setup_logging()
+
+    # Обработка аргументов командной строки
+    parser = argparse.ArgumentParser(
+        description='Экспорт расходных накладных из 1С 7.7 в PDF',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        '--update',
+        action='store_true',
+        help='Проверить и применить обновления из git-репозитория'
+    )
+    args = parser.parse_args()
+
+    # Если указан флаг --update, выполняем обновление и выходим
+    if args.update:
+        updated = check_for_updates()
+        if updated:
+            console.print("\n[green]Перезапустите программу для использования обновленной версии.[/green]")
+        input("\nНажмите Enter для выхода...")
+        return
 
     # Загружаем путь к базе данных
     try:
