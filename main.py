@@ -1,4 +1,4 @@
-# -*- coding: cp1251 -*-
+# -*- coding: utf-8 -*-
 """
 Главный модуль для экспорта расходных накладных из 1С 7.7 в PDF
 """
@@ -45,7 +45,7 @@ def check_for_updates():
             cwd=script_dir,
             capture_output=True,
             text=True,
-            encoding='cp1251'
+            encoding='utf-8'
         )
 
         if result.returncode != 0:
@@ -61,7 +61,7 @@ def check_for_updates():
             cwd=script_dir,
             capture_output=True,
             text=True,
-            encoding='cp1251'
+            encoding='utf-8'
         )
 
         if result.returncode != 0:
@@ -74,7 +74,7 @@ def check_for_updates():
             cwd=script_dir,
             capture_output=True,
             text=True,
-            encoding='cp1251'
+            encoding='utf-8'
         )
 
         if result.returncode != 0:
@@ -95,7 +95,7 @@ def check_for_updates():
             cwd=script_dir,
             capture_output=True,
             text=True,
-            encoding='cp1251'
+            encoding='utf-8'
         )
 
         if result.returncode != 0:
@@ -108,7 +108,7 @@ def check_for_updates():
             cwd=script_dir,
             capture_output=True,
             text=True,
-            encoding='cp1251'
+            encoding='utf-8'
         )
 
         if result.stdout.strip():
