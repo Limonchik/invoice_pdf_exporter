@@ -1,7 +1,7 @@
 # Конфигурация путей к базе данных 1C 7.7
 # Укажите путь к папке с DBF файлами базы данных
 
-DATABASE_PATH=
+DATABASE_PATH=C:\Users\andy\Desktop\esse
 
 # Примеры:
 # DB_PATH=\\SERVER\1C\Base

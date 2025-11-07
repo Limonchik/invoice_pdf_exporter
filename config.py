@@ -74,8 +74,8 @@ except Exception as e:
 PAGE_SIZE = A4
 PAGE_WIDTH, PAGE_HEIGHT = A4
 
-# Количество накладных на одной странице
-INVOICES_PER_PAGE = 3
+# Количество накладных на одной странице (максимум)
+MAX_INVOICES_PER_PAGE = 3
 
 # Отступы страницы (в мм)
 PAGE_MARGIN_TOP = 10 * mm
@@ -84,14 +84,27 @@ PAGE_MARGIN_LEFT = 10 * mm
 PAGE_MARGIN_RIGHT = 10 * mm
 
 # Расстояние между накладными (в мм)
-INVOICE_SPACING = 5 * mm
-
-# Высота одной накладной (рассчитывается автоматически)
-INVOICE_HEIGHT = (PAGE_HEIGHT - PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM -
-                  (INVOICES_PER_PAGE - 1) * INVOICE_SPACING) / INVOICES_PER_PAGE
+INVOICE_SPACING = 1 * mm
 
 # Ширина области накладной
 INVOICE_WIDTH = PAGE_WIDTH - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT
+
+# Доступная высота для размещения накладных
+AVAILABLE_HEIGHT = PAGE_HEIGHT - PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM
+
+# Параметры динамического дизайна для расчёта высоты накладных
+DESIGN_CONFIG = {
+    'header_height': 50,           # Высота заголовка накладной (pt)
+    'table_row_height': 15,        # Высота строки товара (pt)
+    'table_header_height': 20,     # Высота заголовка таблицы (pt)
+    'footer_height': 60,           # Итоги + сумма прописью (pt)
+    'spacing_internal': 10         # Внутренние отступы (pt)
+}
+
+# УСТАРЕВШИЕ параметры (оставлены для совместимости, но не используются в динамической компоновке)
+INVOICES_PER_PAGE = 3  # Заменено на MAX_INVOICES_PER_PAGE
+INVOICE_HEIGHT = (PAGE_HEIGHT - PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM -
+                  (INVOICES_PER_PAGE - 1) * INVOICE_SPACING) / INVOICES_PER_PAGE
 
 
 # ======================== НАСТРОЙКИ ШРИФТОВ ========================

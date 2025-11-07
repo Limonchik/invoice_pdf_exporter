@@ -14,12 +14,39 @@ from modules.dbf_reader import create_reader
 logger = logging.getLogger(__name__)
 
 
+def _determine_doc_type(doc_number: str) -> str:
+    """
+    Определить тип документа по номеру
+
+    Args:
+        doc_number: Номер документа
+
+    Returns:
+        Тип документа ('ДРН', 'МРН' и т.д.) или пустая строка
+    """
+    doc_number_upper = doc_number.upper()
+
+    # Проверяем префиксы в порядке специфичности
+    if 'ДРН' in doc_number_upper:
+        return 'ДРН'
+    elif 'МРН' in doc_number_upper:
+        return 'МРН'
+    elif 'РНК' in doc_number_upper:
+        return 'РНК'
+    elif 'РН-' in doc_number_upper:
+        return 'РН'
+    elif 'НАКЛ' in doc_number_upper:
+        return 'НАКЛ'
+
+    return ''
+
+
 class Invoice:
     """
     Класс для хранения данных расходной накладной
     """
 
-    def __init__(self, number: str, date: datetime, order_number: str = ""):
+    def __init__(self, number: str, date: datetime, order_number: str = "", doc_type: str = ""):
         """
         Инициализация накладной
 
@@ -27,10 +54,12 @@ class Invoice:
             number: Номер накладной
             date: Дата накладной
             order_number: Номер заказа (опционально)
+            doc_type: Тип документа (ДРН, МРН и т.д.)
         """
         self.number = number
         self.date = date
         self.order_number = order_number
+        self.doc_type = doc_type
         self.items = []  # Список товарных позиций
 
     def add_item(self, item_name: str, unit: str, quantity: float, price: float, amount: float):
@@ -72,12 +101,13 @@ class Invoice:
             'number': self.number,
             'date': self.date,
             'order_number': self.order_number,
+            'doc_type': self.doc_type,
             'items': self.items,
             'total_amount': self.get_total_amount()
         }
 
     def __repr__(self):
-        return f"Invoice(number='{self.number}', date={self.date}, items={len(self.items)})"
+        return f"Invoice(number='{self.number}', type='{self.doc_type}', date={self.date}, items={len(self.items)})"
 
 
 class InvoiceExtractor:
@@ -128,10 +158,15 @@ class InvoiceExtractor:
                 # Создаем объект Invoice
                 # Используем contractor_number как order_number
                 contractor_number = raw_inv.get('contractor_number', '')
+
+                # Определяем тип документа по номеру
+                doc_type = _determine_doc_type(raw_inv['number'])
+
                 invoice = Invoice(
                     number=raw_inv['number'],
                     date=raw_inv['date'],
-                    order_number=contractor_number
+                    order_number=contractor_number,
+                    doc_type=doc_type
                 )
 
                 # Добавляем товарные позиции

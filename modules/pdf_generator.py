@@ -60,6 +60,7 @@ class PDFGenerator:
     def _calculate_invoice_height(self, invoice: Invoice) -> float:
         """
         Вычислить реальную высоту накладной в зависимости от количества товаров
+        (используя параметры из DESIGN_CONFIG)
 
         Args:
             invoice: Объект Invoice
@@ -68,32 +69,122 @@ class PDFGenerator:
             Высота накладной в пунктах
         """
         height = 0.0
+        design = config.DESIGN_CONFIG
 
-        # Номер заказа (если есть)
-        if invoice.order_number:
-            height += 15  # Высота строки номера заказа
+        # Заголовок накладной (включая номер заказа, если есть)
+        height += design['header_height']
 
-        # Заголовок накладной
-        height += 20  # Высота строки заголовка
+        # Заголовок таблицы
+        height += design['table_header_height']
 
-        # Таблица: заголовок + строки товаров + итоговая строка
-        rows_count = 1 + len(invoice.items) + 1  # header + items + total
-        row_height = 15  # Средняя высота строки таблицы
-        table_height = rows_count * row_height
-        height += table_height
+        # Строки товаров
+        num_items = len(invoice.items)
+        height += num_items * design['table_row_height']
 
-        # Сумма прописью
-        height += 20  # Высота строки суммы прописью
+        # Итоговая строка таблицы
+        height += design['table_row_height']
 
-        # Добавляем небольшой запас
-        height += 10
+        # Подвал (итоги + сумма прописью)
+        height += design['footer_height']
 
-        logger.debug(f"Вычислена высота накладной {invoice.number}: {height} пунктов ({len(invoice.items)} товаров)")
+        # Внутренние отступы
+        height += design['spacing_internal']
+
+        logger.debug(f"Вычислена высота накладной {invoice.number}: {height:.1f} пунктов ({num_items} товаров)")
         return height
+
+    def _get_size_category(self, invoice_height: float) -> tuple:
+        """
+        Определить категорию размещения накладной (1/3, 1/2 или полная страница)
+
+        Args:
+            invoice_height: Реальная высота накладной в пунктах
+
+        Returns:
+            Кортеж (категория, выделяемая_высота)
+            Категория: 'third' (1/3), 'half' (1/2), 'full' (полная страница)
+        """
+        # Вычитаем spacing из доступной высоты, чтобы 3 накладные 'third' гарантированно поместились
+        # Максимум 3 накладные на странице = 2 spacing между ними
+        max_spacings = config.MAX_INVOICES_PER_PAGE - 1
+        available_for_invoices = config.AVAILABLE_HEIGHT - (max_spacings * config.INVOICE_SPACING)
+
+        # Высоты зон (с учётом spacing)
+        zone_third = available_for_invoices / 3
+        zone_half = available_for_invoices / 2
+        zone_full = available_for_invoices
+
+        if invoice_height <= zone_third:
+            return ('third', zone_third)
+        elif invoice_height <= zone_half:
+            return ('half', zone_half)
+        else:
+            return ('full', zone_full)
+
+    def _layout_invoices(self, invoices: List[Invoice]) -> List[List[tuple]]:
+        """
+        Разместить накладные по страницам с динамической компоновкой
+
+        Args:
+            invoices: Список накладных
+
+        Returns:
+            Список страниц, где каждая страница - список кортежей (накладная, выделенная_высота, реальная_высота)
+        """
+        pages = []
+        current_page = []
+        current_page_height = 0
+        invoices_on_page = 0
+
+        for invoice in invoices:
+            # Рассчитать реальную высоту накладной
+            invoice_height = self._calculate_invoice_height(invoice)
+
+            # Определить категорию размещения и выделяемую высоту
+            category, allocated_height = self._get_size_category(invoice_height)
+
+            logger.debug(f"Накладная {invoice.number}: высота={invoice_height:.1f} pt, категория={category}, выделено={allocated_height:.1f} pt")
+
+            # Проверить: поместится ли на текущей странице?
+            # Spacing добавляется только МЕЖДУ накладными (не после первой)
+            needed_height = current_page_height + allocated_height
+            if invoices_on_page > 0:
+                needed_height += config.INVOICE_SPACING
+
+            # Добавляем tolerance 0.01 pt для учёта погрешности float
+            fits_on_page = (needed_height <= config.AVAILABLE_HEIGHT + 0.01 and
+                            invoices_on_page < config.MAX_INVOICES_PER_PAGE)
+
+            if not fits_on_page and current_page:
+                # Начать новую страницу
+                logger.debug(f"Страница заполнена ({invoices_on_page} накладных, {current_page_height:.1f} pt), создаём новую")
+                pages.append(current_page)
+                current_page = []
+                current_page_height = 0
+                invoices_on_page = 0
+
+            # Разместить накладную на текущей странице
+            current_page.append((invoice, allocated_height, invoice_height))
+
+            # Добавляем spacing ПЕРЕД накладной (если это не первая накладная)
+            if invoices_on_page > 0:
+                current_page_height += config.INVOICE_SPACING
+
+            # Добавляем высоту самой накладной
+            current_page_height += allocated_height
+            invoices_on_page += 1
+
+        # Добавить последнюю страницу
+        if current_page:
+            logger.debug(f"Последняя страница: {invoices_on_page} накладных, {current_page_height:.1f} pt")
+            pages.append(current_page)
+
+        logger.info(f"Накладные размещены на {len(pages)} страницах с динамической компоновкой")
+        return pages
 
     def generate_pdf(self, invoices: List[Invoice], output_path: str) -> bool:
         """
-        Ãåíåðèðîâàòü PDF ñ íàêëàäíûìè
+        Ãåíåðèðîâàòü PDF ñ íàêëàäíûìè (с динамической компоновкой)
 
         Args:
             invoices: Ñïèñîê îáúåêòîâ Invoice
@@ -109,61 +200,39 @@ class PDFGenerator:
             # Создаем canvas
             c = canvas.Canvas(output_path, pagesize=A4)
 
-            # Генерируем накладные с динамическим размещением
-            page_number = 1
-            current_y = config.PAGE_HEIGHT - config.PAGE_MARGIN_TOP
-            invoices_on_page = 0
+            # Динамическая компоновка накладных по страницам
+            pages = self._layout_invoices(invoices)
 
-            for idx, invoice in enumerate(invoices):
-                # Вычисляем требуемую высоту накладной
-                required_height = self._calculate_invoice_height(invoice)
+            # Отрисовка страниц
+            for page_num, page in enumerate(pages, 1):
+                logger.debug(f"Отрисовка страницы {page_num} ({len(page)} накладных)")
 
-                # Проверяем, помещается ли накладная на текущую позицию
-                if current_y - required_height < config.PAGE_MARGIN_BOTTOM:
-                    # Накладная не помещается, создаем новую страницу
-                    logger.debug(f"Накладная {invoice.number} не помещается, создаем страницу {page_number + 1}")
+                y_position = config.PAGE_HEIGHT - config.PAGE_MARGIN_TOP
+
+                for invoice_data in page:
+                    invoice, allocated_height, real_height = invoice_data
+
+                    logger.debug(f"  Накладная {invoice.number}: Y={y_position:.1f}, выделено={allocated_height:.1f}, реально={real_height:.1f}")
+
+                    # Отрисовка накладной (начиная сверху выделенной зоны)
+                    self._generate_invoice(c, invoice, y_position)
+
+                    # Переход к следующей позиции (вниз на выделенную высоту + spacing)
+                    y_position -= (allocated_height + config.INVOICE_SPACING)
+
+                # Переход к следующей странице (если есть ещё страницы)
+                if page_num < len(pages):
                     c.showPage()
-                    page_number += 1
-                    current_y = config.PAGE_HEIGHT - config.PAGE_MARGIN_TOP
-                    invoices_on_page = 0
-
-                logger.debug(f"Генерация накладной №{invoice.number} на позиции Y={current_y} (страница {page_number})")
-
-                # Генерируем накладную
-                self._generate_invoice(c, invoice, current_y)
-
-                # Сдвигаем позицию вниз
-                current_y -= (required_height + config.INVOICE_SPACING)
-                invoices_on_page += 1
 
             # Сохраняем PDF
             c.save()
 
-            logger.info(f"PDF создан: {output_path} (страниц: {page_number})")
+            logger.info(f"PDF создан: {output_path} (страниц: {len(pages)})")
             return True
 
         except Exception as e:
             logger.error(f"Ошибка при генерации PDF: {str(e)}")
             return False
-
-    def _generate_page(self, c: canvas.Canvas, invoices: List[Invoice]):
-        """
-        Ãåíåðèðîâàòü îäíó ñòðàíèöó ñ íàêëàäíûìè
-
-        Args:
-            c: Canvas äëÿ ðèñîâàíèÿ
-            invoices: Ñïèñîê íàêëàäíûõ äëÿ ýòîé ñòðàíèöû (äî 3 øòóê)
-        """
-        # Вычисляем позиции для каждой накладной
-        for idx, invoice in enumerate(invoices):
-            # Позиция Y для текущей накладной (сверху вниз)
-            y_position = (config.PAGE_HEIGHT - config.PAGE_MARGIN_TOP -
-                         idx * (config.INVOICE_HEIGHT + config.INVOICE_SPACING))
-
-            logger.debug(f"Генерация накладной №{invoice.number} на позиции Y={y_position}")
-
-            # Генерируем накладную
-            self._generate_invoice(c, invoice, y_position)
 
     def _generate_invoice(self, c: canvas.Canvas, invoice: Invoice, y_top: float):
         """
@@ -206,11 +275,17 @@ class PDFGenerator:
 
         # Добавляем строки товаров
         for idx, item in enumerate(invoice.items, 1):
+            # Форматирование количества: для ДРН - целые числа, для МРН - три знака после запятой
+            if invoice.doc_type == 'ДРН':
+                quantity_str = str(int(item['quantity']))  # Целое число без дробной части
+            else:
+                quantity_str = config.QUANTITY_FORMAT.format(item['quantity'])  # 3 знака после запятой
+
             row = [
                 str(idx),
                 item['item_name'],
                 item['unit'],
-                config.QUANTITY_FORMAT.format(item['quantity']),
+                quantity_str,
                 config.NUMBER_FORMAT.format(item['price']),
                 config.NUMBER_FORMAT.format(item['amount'])
             ]
@@ -218,11 +293,19 @@ class PDFGenerator:
 
         # Добавляем строку итого
         total_amount = invoice.get_total_amount()
+        total_quantity = sum(item['quantity'] for item in invoice.items)
+
+        # Форматирование итогового количества: для ДРН - целые числа, для МРН - три знака после запятой
+        if invoice.doc_type == 'ДРН':
+            total_quantity_str = str(int(total_quantity))
+        else:
+            total_quantity_str = config.QUANTITY_FORMAT.format(total_quantity)
+
         total_row = [
             "",
             "",
             "",
-            "",
+            total_quantity_str,
             config.TOTAL_LABEL,
             config.NUMBER_FORMAT.format(total_amount)
         ]
