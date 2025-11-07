@@ -33,7 +33,7 @@ if sys.platform == 'win32':
     os.system('chcp 65001 >nul 2>&1')
 
 # Инициализация
-console = Console(force_terminal=True, legacy_windows=False)
+console = Console(force_terminal=True, legacy_windows=True)
 logger = logging.getLogger(__name__)
 
 
