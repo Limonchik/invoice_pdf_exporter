@@ -39,7 +39,8 @@ logs/*.log
 
 # Test files
 test_*.py
-Screenshot*.png
+test_*.txt
+*.png
 
 # Documentation (except README)
 *.md

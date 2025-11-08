@@ -88,6 +88,36 @@ def check_for_updates():
             print("Обновлений нет. Используется последняя версия.")
             return False
 
+        # Проверяем, есть ли локальные изменения в config.txt
+        config_file = os.path.join(script_dir, 'config.txt')
+        has_config_changes = False
+
+        if os.path.exists(config_file):
+            result = subprocess.run(
+                ['git', 'status', '--porcelain', 'config.txt'],
+                cwd=script_dir,
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+
+            if result.stdout.strip():
+                has_config_changes = True
+                print("Сохранение локальных настроек config.txt...")
+
+                # Сохраняем изменения в stash
+                result = subprocess.run(
+                    ['git', 'stash', 'push', '-m', 'Auto-stash config.txt before update', 'config.txt'],
+                    cwd=script_dir,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8'
+                )
+
+                if result.returncode != 0:
+                    print(f"Предупреждение: не удалось сохранить config.txt: {result.stderr}")
+                    has_config_changes = False
+
         # Применяем обновления
         print("Применение обновлений...")
         result = subprocess.run(
@@ -100,7 +130,40 @@ def check_for_updates():
 
         if result.returncode != 0:
             print(f"Ошибка при применении обновлений: {result.stderr}")
+
+            # Если были изменения в config.txt, восстанавливаем их
+            if has_config_changes:
+                print("Восстановление config.txt...")
+                subprocess.run(
+                    ['git', 'stash', 'pop'],
+                    cwd=script_dir,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8'
+                )
+
             return False
+
+        # Восстанавливаем локальные изменения config.txt
+        if has_config_changes:
+            print("Восстановление локальных настроек config.txt...")
+            result = subprocess.run(
+                ['git', 'stash', 'pop'],
+                cwd=script_dir,
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+
+            if result.returncode != 0:
+                # Проверяем, возник ли конфликт
+                if 'CONFLICT' in result.stdout or 'CONFLICT' in result.stderr:
+                    print("\nВНИМАНИЕ: Конфликт при восстановлении config.txt!")
+                    print("Ваши настройки сохранены в stash.")
+                    print("Используйте команду 'git stash list' для просмотра сохранений.")
+                    print("Для ручного восстановления: 'git stash show -p stash@{0}'")
+                else:
+                    print(f"Настройки восстановлены успешно")
 
         # Показываем информацию об обновлениях
         result = subprocess.run(

@@ -134,19 +134,25 @@ FONT_SIZE_AMOUNT_IN_WORDS = 8
 
 # ======================== НАСТРОЙКИ ТАБЛИЦЫ ========================
 
+# Стиль таблицы: 'minimal' (максимальная экономия чернил) или 'classic' (улучшенная читаемость)
+TABLE_STYLE = 'classic'  # Доступные значения: 'minimal', 'classic'
+
 # Ширина колонок таблицы (в относительных единицах)
 TABLE_COL_WIDTHS = [25, 200, 40, 70, 80, 80]
 
-# Цвета таблицы (Excel-стиль)
-TABLE_HEADER_BG_COLOR = colors.Color(68/255, 114/255, 196/255)  # #4472C4
-TABLE_HEADER_TEXT_COLOR = colors.white
-TABLE_ROW_ALT_COLOR = colors.Color(242/255, 242/255, 242/255)  # #F2F2F2
+# Цвета таблицы (оптимизировано для экономии чернил)
+TABLE_HEADER_BG_COLOR = colors.Color(68/255, 114/255, 196/255)  # #4472C4 (НЕ ИСПОЛЬЗУЕТСЯ)
+TABLE_HEADER_TEXT_COLOR = colors.black  # Черный текст вместо белого
+TABLE_ROW_ALT_COLOR = colors.Color(242/255, 242/255, 242/255)  # #F2F2F2 (НЕ ИСПОЛЬЗУЕТСЯ)
 TABLE_GRID_COLOR = colors.Color(217/255, 217/255, 217/255)  # #D9D9D9
 TABLE_BORDER_COLOR = colors.black
+TABLE_DOTTED_LINE_COLOR = colors.Color(232/255, 232/255, 232/255)  # #E8E8E8 (очень светлый для пунктира)
 
-# Толщина границ
-TABLE_BORDER_WIDTH = 0.5
-TABLE_OUTER_BORDER_WIDTH = 1.0
+# Толщина границ (оптимизировано для экономии чернил)
+TABLE_BORDER_WIDTH = 0.25  # Тонкие границы
+TABLE_OUTER_BORDER_WIDTH = 0.25  # Тонкая внешняя рамка
+TABLE_HEADER_BORDER_WIDTH = 1.5  # Утолщенная линия под заголовком
+TABLE_TOTAL_BORDER_WIDTH = 0.75  # Линия для двойной границы перед итого
 
 # Заголовки колонок таблицы
 TABLE_HEADERS = [
