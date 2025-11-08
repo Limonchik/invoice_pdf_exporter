@@ -322,11 +322,12 @@ class PDFGenerator:
         current_y -= (table_height + 10)  # Отступ после таблицы
 
         # ======================== СУММА ПРОПИСЬЮ ========================
+        # Закомментировано по запросу пользователя (можно восстановить при необходимости)
 
-        amount_in_words = self._amount_to_words(total_amount)
-        c.setFont(config.FONT_BODY, config.FONT_SIZE_AMOUNT_IN_WORDS)
-        amount_text = config.AMOUNT_IN_WORDS_TEMPLATE.format(amount_words=amount_in_words)
-        c.drawString(x_left, current_y, amount_text)
+        # amount_in_words = self._amount_to_words(total_amount)
+        # c.setFont(config.FONT_BODY, config.FONT_SIZE_AMOUNT_IN_WORDS)
+        # amount_text = config.AMOUNT_IN_WORDS_TEMPLATE.format(amount_words=amount_in_words)
+        # c.drawString(x_left, current_y, amount_text)
 
     def _format_date(self, dt: datetime) -> str:
         """

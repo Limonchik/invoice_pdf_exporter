@@ -127,7 +127,7 @@ FONT_SIZE_ORDER = 12
 FONT_SIZE_INVOICE_HEADER = 10
 FONT_SIZE_DATE = 9
 FONT_SIZE_TABLE_HEADER = 9
-FONT_SIZE_TABLE_BODY = 8
+FONT_SIZE_TABLE_BODY = 11
 FONT_SIZE_TOTAL = 9
 FONT_SIZE_AMOUNT_IN_WORDS = 8
 
@@ -160,8 +160,8 @@ TABLE_HEADERS = [
     "Товар",
     "Ед.",
     "Количество",
-    "Цена с НДС",
-    "Сумма с НДС"
+    "Цена с НДС, ₽",
+    "Сумма с НДС, ₽"
 ]
 
 
