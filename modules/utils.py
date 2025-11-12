@@ -189,3 +189,69 @@ def truncate_string(s: str, max_length: int, suffix: str = "...") -> str:
     if len(s) <= max_length:
         return s
     return s[:max_length - len(suffix)] + suffix
+
+
+def truncate_text(text: str, col_width: float, font_name: str, font_size: float,
+                  cell_padding_left: float = 4, cell_padding_right: float = 4) -> str:
+    """
+    Обрезает текст с учётом реальной ширины в PDF и добавляет троеточие
+
+    Функция точно рассчитывает, сколько символов текста поместится в колонку
+    заданной ширины с учётом padding и шрифта. Если текст не помещается,
+    обрезает его и добавляет троеточие в пределах доступной ширины.
+
+    Args:
+        text: Исходный текст для отображения
+        col_width: Ширина колонки в единицах ReportLab (points)
+        font_name: Название шрифта (например, 'Arial')
+        font_size: Размер шрифта в пунктах
+        cell_padding_left: Отступ слева в пикселях (по умолчанию 4px)
+        cell_padding_right: Отступ справа в пикселях (по умолчанию 4px)
+
+    Returns:
+        Обрезанный текст с троеточием или исходный текст, если помещается
+
+    Example:
+        >>> truncate_text("Длинное название товара", 100, "Arial", 11)
+        "Длинное назва..."
+    """
+    from reportlab.pdfbase import pdfmetrics
+
+    # Доступная ширина = ширина колонки - отступы
+    available_width = col_width - cell_padding_left - cell_padding_right
+
+    # Рассчитываем ширину исходного текста
+    text_width = pdfmetrics.stringWidth(text, font_name, font_size)
+
+    # Если текст помещается, возвращаем как есть
+    if text_width <= available_width:
+        return text
+
+    # Рассчитываем ширину троеточия
+    ellipsis = config.ELLIPSIS
+    ellipsis_width = pdfmetrics.stringWidth(ellipsis, font_name, font_size)
+
+    # Доступная ширина для текста (без троеточия)
+    text_available_width = available_width - ellipsis_width
+
+    # Если даже троеточие не помещается, возвращаем пустую строку
+    if text_available_width <= 0:
+        return ellipsis
+
+    # Обрезаем текст посимвольно до тех пор, пока не поместится с троеточием
+    # Начинаем с приблизительной оценки количества символов
+    avg_char_width = text_width / len(text) if len(text) > 0 else font_size / 2
+    estimated_chars = int(text_available_width / avg_char_width)
+
+    # Гарантируем, что не выходим за пределы строки
+    estimated_chars = max(1, min(estimated_chars, len(text)))
+
+    # Точная подгонка: уменьшаем количество символов, пока текст + троеточие не поместится
+    truncated = text[:estimated_chars]
+    while len(truncated) > 0:
+        truncated_width = pdfmetrics.stringWidth(truncated, font_name, font_size)
+        if truncated_width <= text_available_width:
+            break
+        truncated = truncated[:-1]
+
+    return truncated + ellipsis

@@ -16,6 +16,7 @@ from num2words import num2words
 
 import config
 from modules.invoice_extractor import Invoice
+from modules.utils import truncate_text
 from styles.table_styles import create_invoice_table_style, get_column_widths, get_table_headers
 
 
@@ -121,9 +122,77 @@ class PDFGenerator:
         else:
             return ('full', zone_full)
 
+    def _group_invoices_by_order(self, invoices: List[Invoice]) -> List[List[Invoice]]:
+        """
+        Сгруппировать накладные по номеру заказа (order_number)
+
+        Args:
+            invoices: Список накладных
+
+        Returns:
+            Список групп, где каждая группа - список накладных с одинаковым order_number
+        """
+        from collections import OrderedDict
+
+        # Используем OrderedDict для сохранения порядка первого появления
+        groups_dict = OrderedDict()
+
+        for invoice in invoices:
+            # Используем order_number как ключ группы (пустые значения тоже группируем вместе)
+            key = invoice.order_number if invoice.order_number else "__EMPTY__"
+
+            if key not in groups_dict:
+                groups_dict[key] = []
+
+            groups_dict[key].append(invoice)
+
+        # Преобразуем словарь в список групп
+        groups = list(groups_dict.values())
+
+        logger.debug(f"Накладные сгруппированы: {len(groups)} групп по order_number")
+        for idx, group in enumerate(groups):
+            order_num = group[0].order_number if group[0].order_number else "(без номера заказа)"
+            logger.debug(f"  Группа {idx + 1}: order_number={order_num}, накладных={len(group)}")
+
+        return groups
+
+    def _calculate_group_height(self, group: List[Invoice]) -> float:
+        """
+        Рассчитать суммарную высоту группы накладных
+
+        Args:
+            group: Список накладных в группе
+
+        Returns:
+            Суммарная высота группы в пунктах (с учётом spacing между накладными)
+        """
+        total_height = 0.0
+
+        for idx, invoice in enumerate(group):
+            # Рассчитываем реальную высоту накладной
+            invoice_height = self._calculate_invoice_height(invoice)
+
+            # Определяем выделяемую высоту (категорию)
+            category, allocated_height = self._get_size_category(invoice_height)
+
+            # Добавляем выделенную высоту
+            total_height += allocated_height
+
+            # Добавляем spacing между накладными (не после последней)
+            if idx < len(group) - 1:
+                total_height += config.INVOICE_SPACING
+
+        return total_height
+
     def _layout_invoices(self, invoices: List[Invoice]) -> List[List[tuple]]:
         """
-        Разместить накладные по страницам с динамической компоновкой
+        Разместить накладные по страницам с оптимизацией (Bin Packing алгоритм)
+
+        Алгоритм:
+        1. Группировка накладных по order_number
+        2. Сортировка групп по суммарной высоте (от большей к меньшей)
+        3. First Fit Decreasing: каждая группа размещается на первой подходящей странице
+        4. Если группа не помещается ни на одну страницу - создаётся новая страница
 
         Args:
             invoices: Список накладных
@@ -131,55 +200,75 @@ class PDFGenerator:
         Returns:
             Список страниц, где каждая страница - список кортежей (накладная, выделенная_высота, реальная_высота)
         """
+        if not invoices:
+            return []
+
+        # Шаг 1: Группировка по order_number
+        groups = self._group_invoices_by_order(invoices)
+
+        # Шаг 2: Вычисляем высоту каждой группы и создаём список (группа, высота)
+        groups_with_heights = []
+        for group in groups:
+            group_height = self._calculate_group_height(group)
+            groups_with_heights.append((group, group_height))
+
+            order_num = group[0].order_number if group[0].order_number else "(без номера)"
+            logger.debug(f"Группа {order_num}: {len(group)} накладных, высота={group_height:.1f} pt")
+
+        # Шаг 3: Сортировка групп по высоте (от большей к меньшей) - First Fit Decreasing
+        groups_with_heights.sort(key=lambda x: x[1], reverse=True)
+
+        logger.info(f"Группы отсортированы по высоте (First Fit Decreasing)")
+
+        # Шаг 4: Размещение групп на страницах (Bin Packing)
+        # Каждая страница имеет: список кортежей (накладная, allocated_height, real_height) и текущую высоту
         pages = []
-        current_page = []
-        current_page_height = 0
-        invoices_on_page = 0
+        page_heights = []  # Высота каждой страницы
+        page_invoice_counts = []  # Количество накладных на каждой странице
 
-        for invoice in invoices:
-            # Рассчитать реальную высоту накладной
-            invoice_height = self._calculate_invoice_height(invoice)
+        for group, group_height in groups_with_heights:
+            order_num = group[0].order_number if group[0].order_number else "(без номера)"
+            logger.debug(f"Размещение группы {order_num} ({len(group)} накладных)")
 
-            # Определить категорию размещения и выделяемую высоту
-            category, allocated_height = self._get_size_category(invoice_height)
+            # Размещаем накладные из группы последовательно
+            # Группа может быть разорвана на несколько страниц, если слишком большая
+            for invoice in group:
+                invoice_height = self._calculate_invoice_height(invoice)
+                category, allocated_height = self._get_size_category(invoice_height)
 
-            logger.debug(f"Накладная {invoice.number}: высота={invoice_height:.1f} pt, категория={category}, выделено={allocated_height:.1f} pt")
+                # Пытаемся разместить накладную на последней странице
+                placed = False
 
-            # Проверить: поместится ли на текущей странице?
-            # Spacing добавляется только МЕЖДУ накладными (не после первой)
-            needed_height = current_page_height + allocated_height
-            if invoices_on_page > 0:
-                needed_height += config.INVOICE_SPACING
+                if pages:
+                    last_page_idx = len(pages) - 1
+                    current_height = page_heights[last_page_idx]
+                    current_count = page_invoice_counts[last_page_idx]
 
-            # Добавляем tolerance 0.01 pt для учёта погрешности float
-            fits_on_page = (needed_height <= config.AVAILABLE_HEIGHT + 0.01 and
-                            invoices_on_page < config.MAX_INVOICES_PER_PAGE)
+                    # Проверяем, поместится ли накладная
+                    test_height = current_height + allocated_height
+                    if current_count > 0:
+                        test_height += config.INVOICE_SPACING
 
-            if not fits_on_page and current_page:
-                # Начать новую страницу
-                logger.debug(f"Страница заполнена ({invoices_on_page} накладных, {current_page_height:.1f} pt), создаём новую")
-                pages.append(current_page)
-                current_page = []
-                current_page_height = 0
-                invoices_on_page = 0
+                    if test_height <= config.AVAILABLE_HEIGHT + 0.01 and current_count < config.MAX_INVOICES_PER_PAGE:
+                        # Размещаем на последней странице
+                        if current_count > 0:
+                            page_heights[last_page_idx] += config.INVOICE_SPACING
 
-            # Разместить накладную на текущей странице
-            current_page.append((invoice, allocated_height, invoice_height))
+                        pages[last_page_idx].append((invoice, allocated_height, invoice_height))
+                        page_heights[last_page_idx] += allocated_height
+                        page_invoice_counts[last_page_idx] += 1
+                        placed = True
 
-            # Добавляем spacing ПЕРЕД накладной (если это не первая накладная)
-            if invoices_on_page > 0:
-                current_page_height += config.INVOICE_SPACING
+                if not placed:
+                    # Создаём новую страницу для накладной
+                    pages.append([(invoice, allocated_height, invoice_height)])
+                    page_heights.append(allocated_height)
+                    page_invoice_counts.append(1)
 
-            # Добавляем высоту самой накладной
-            current_page_height += allocated_height
-            invoices_on_page += 1
+        logger.info(f"Накладные оптимально размещены на {len(pages)} страницах (Bin Packing)")
+        for idx, (height, count) in enumerate(zip(page_heights, page_invoice_counts)):
+            logger.debug(f"  Страница {idx + 1}: {count} накладных, высота={height:.1f} pt")
 
-        # Добавить последнюю страницу
-        if current_page:
-            logger.debug(f"Последняя страница: {invoices_on_page} накладных, {current_page_height:.1f} pt")
-            pages.append(current_page)
-
-        logger.info(f"Накладные размещены на {len(pages)} страницах с динамической компоновкой")
         return pages
 
     def generate_pdf(self, invoices: List[Invoice], output_path: str) -> bool:
@@ -281,9 +370,21 @@ class PDFGenerator:
             else:
                 quantity_str = config.QUANTITY_FORMAT.format(item['quantity'])  # 3 знака после запятой
 
+            # Обрезаем название товара с троеточием, если не помещается в колонку
+            # Ширина колонки "Товар" = 251 единиц (второй элемент в TABLE_COL_WIDTHS)
+            # Padding для стиля 'classic': left=4, right=4
+            item_name_truncated = truncate_text(
+                text=item['item_name'],
+                col_width=config.TABLE_COL_WIDTHS[1],  # Ширина колонки "Товар"
+                font_name=config.FONT_TABLE_BODY,
+                font_size=config.FONT_SIZE_TABLE_BODY,
+                cell_padding_left=4,
+                cell_padding_right=4
+            )
+
             row = [
                 str(idx),
-                item['item_name'],
+                item_name_truncated,
                 item['unit'],
                 quantity_str,
                 config.NUMBER_FORMAT.format(item['price']),
